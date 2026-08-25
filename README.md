@@ -24,6 +24,14 @@ binding `127.0.0.1`.
 | `/status` | JSON service status (method, running, detail) |
 | `/status/badge` | HTML fragment used by the header status badge |
 
+> **Running in Docker?** `/pair`'s LAN auto-discovery (SSDP/DIAL) needs to
+> reach the LAN directly — it doesn't work from behind the default bridge
+> network's NAT (the M-SEARCH multicast either doesn't escape it, or a
+> replying TV's response doesn't route back correctly). Run the container
+> with `--network host` (or `network_mode: host` in Compose) if you want
+> LAN scanning to actually find devices; code-based pairing is unaffected
+> either way. Confirmed against a real Raspberry Pi deployment — see #3.
+
 ## Features
 
 - Sticky header + tab bar; fixed-bottom **Save and restart** button that
