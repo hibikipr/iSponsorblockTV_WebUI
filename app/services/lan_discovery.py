@@ -87,7 +87,7 @@ class _Handler(ssdp.aio.SSDP):
         super().__init__()
         self.devices_queue: asyncio.Queue[tuple[str, str]] = asyncio.Queue()
 
-    def __call__(self) -> "_Handler":
+    def __call__(self) -> _Handler:
         """Makes the instance usable as its own protocol_factory for
         `loop.create_datagram_endpoint()`, which calls the factory to obtain
         a fresh protocol object — we want it to hand back this same instance
@@ -275,6 +275,11 @@ class ScanState:
     scanning: bool = False
     devices: list[dict[str, Any]] = field(default_factory=list)
     error: str | None = None
+    # How many of `devices` have already been sent to a client as rendered
+    # HTML (either a full-page render or a prior poll's OOB append) — see
+    # take_new_devices()/mark_all_delivered() below. `devices` only ever
+    # grows during a scan, so this is a simple watermark rather than a set.
+    rendered_count: int = 0
 
 
 _state = ScanState()
@@ -285,6 +290,21 @@ def get_state() -> ScanState:
     return _state
 
 
+def mark_all_delivered() -> None:
+    """Call after a full render of `devices` (page load, scan start) so the
+    next poll only sends what's actually new."""
+    _state.rendered_count = len(_state.devices)
+
+
+def take_new_devices() -> list[dict[str, Any]]:
+    """Devices discovered since the last full render or poll — for the poll
+    endpoint to append via OOB swap instead of re-rendering the whole list
+    (which would blow away an in-progress edit on an already-added row)."""
+    new = _state.devices[_state.rendered_count :]
+    _state.rendered_count = len(_state.devices)
+    return new
+
+
 async def start_scan() -> ScanState:
     """Kick off a background scan if one isn't already running (idempotent)."""
     async with _lock:
@@ -293,6 +313,7 @@ async def start_scan() -> ScanState:
         _state.scanning = True
         _state.devices = []
         _state.error = None
+        _state.rendered_count = 0
         asyncio.create_task(_run_scan())
     return _state
 

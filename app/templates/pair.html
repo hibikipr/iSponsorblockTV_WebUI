@@ -43,29 +43,4 @@
   </p>
   {% include "partials/lan_scan_results.html" %}
 </article>
-<script>
-  // #lan-scan-results polls itself every 1.5s while a scan is still
-  // resolving other devices (issue #3 follow-up: a first pass replaced the
-  // whole div on every poll tick, which reset whatever "Display name" edit
-  // was in progress on an already-found device — including mid-keystroke,
-  // since `preventDefault()` on htmx:beforeRequest doesn't reliably stop an
-  // `every Ns` trigger from re-firing on schedule). The `[filter]` syntax
-  // in the partial's hx-trigger is htmx's actual documented mechanism for
-  // skipping an individual poll tick without disrupting the interval, and
-  // calls this global on every tick.
-  window.__lanScanIsEditing = function (elt) {
-    return Array.from(elt.querySelectorAll('input')).some(function (input) {
-      return !input.closest('[data-submitted]') && input.value !== input.defaultValue;
-    });
-  };
-
-  // Mark a device row as submitted once its "Add to config" form succeeds,
-  // so it stops counting toward __lanScanIsEditing on later polls.
-  document.addEventListener('htmx:afterRequest', function (e) {
-    const elt = e.detail.elt;
-    if (!elt || !e.detail.successful || !elt.closest('#lan-scan-results')) return;
-    const row = elt.closest('li');
-    if (row) row.dataset.submitted = 'true';
-  });
-</script>
 {% endblock %}

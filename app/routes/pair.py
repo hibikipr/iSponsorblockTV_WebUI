@@ -23,6 +23,9 @@ def _pair_context(request: Request, **extra) -> dict:
 
 @router.get("", response_class=HTMLResponse)
 async def index(request: Request) -> HTMLResponse:
+    # Full render of the current devices list — anything in it counts as
+    # "delivered" so the next poll only appends what's actually new.
+    lan_discovery.mark_all_delivered()
     return request.app.state.templates.TemplateResponse(
         request, "pair.html", _pair_context(request)
     )
@@ -67,6 +70,8 @@ async def pair_save(
 
 @router.post("/lan-scan", response_class=HTMLResponse)
 async def lan_scan_start(request: Request) -> HTMLResponse:
+    # start_scan() resets devices to [] and rendered_count to 0, so this is
+    # a full (empty) render — nothing to mark delivered yet.
     await lan_discovery.start_scan()
     return request.app.state.templates.TemplateResponse(
         request, "partials/lan_scan_results.html", _pair_context(request)
@@ -75,6 +80,14 @@ async def lan_scan_start(request: Request) -> HTMLResponse:
 
 @router.get("/lan-scan/poll", response_class=HTMLResponse)
 async def lan_scan_poll(request: Request) -> HTMLResponse:
+    # Only the status strip gets re-rendered; newly discovered devices are
+    # appended via OOB swap so an in-progress edit on an already-rendered
+    # device row is never touched by this endpoint (issue #3 follow-up —
+    # two earlier attempts at guarding the old full-div poll swap with JS
+    # didn't hold up under real-hardware testing).
+    new_devices = lan_discovery.take_new_devices()
     return request.app.state.templates.TemplateResponse(
-        request, "partials/lan_scan_results.html", _pair_context(request)
+        request,
+        "partials/lan_scan_poll.html",
+        _pair_context(request, new_devices=new_devices),
     )

@@ -653,35 +653,72 @@ def test_pair_page_renders_lan_scan_idle_state(app_with_tmp_config) -> None:
     assert 'hx-post="/pair/lan-scan"' in r.text
 
 
-def test_pair_page_defines_lan_scan_editing_guard(app_with_tmp_config) -> None:
-    """Issue #3 follow-up: a real-hardware test found the LAN scan poll
-    (every 1.5s while scanning) was resetting an in-progress "Display name"
-    edit on an already-found device on every tick — including mid-keystroke.
-    A first fix tried htmx:beforeRequest + preventDefault(), which does not
-    reliably stop an `every Ns` trigger from re-firing on schedule. /pair
-    must define the __lanScanIsEditing global that the poll's hx-trigger
-    filter (see test below) actually uses to skip a tick."""
-    app, _ = app_with_tmp_config
-    client = TestClient(app)
-    r = client.get("/pair")
-    assert r.status_code == 200
-    assert "window.__lanScanIsEditing" in r.text
-
-
-def test_lan_scan_poll_trigger_uses_editing_filter_while_scanning(
+def test_lan_scan_poll_appends_new_device_via_oob_not_full_swap(
     app_with_tmp_config,
 ) -> None:
-    """The poll div's hx-trigger must use htmx's `[filter]` syntax (not a
-    document-level beforeRequest listener) so a mid-edit tick is skipped
-    without disrupting the `every 1.5s` interval itself."""
+    """Issue #3 follow-up: two earlier attempts (htmx:beforeRequest +
+    preventDefault(), then an `every Ns [filter]` trigger) both tried to
+    skip a poll tick while a device row was being edited, and neither held
+    up under real-hardware testing — the poll kept fully re-rendering
+    #lan-scan-results and resetting the "Display name" field on every 1.5s
+    tick regardless. The actual fix: the poll response never re-renders the
+    devices list at all. It only refreshes the status strip and appends
+    newly discovered devices via an out-of-band swap targeting
+    #lan-scan-devices, so an already-rendered row (mid-edit or not) is
+    structurally untouched by any poll response."""
     app, _ = app_with_tmp_config
     from app.services import lan_discovery
 
-    lan_discovery._state = lan_discovery.ScanState(scanning=True)
+    lan_discovery._state = lan_discovery.ScanState(
+        scanning=True,
+        devices=[{"screen_id": "new-1", "name": "Kitchen TV", "offset": 0}],
+        rendered_count=0,
+    )
     client = TestClient(app)
     r = client.get("/pair/lan-scan/poll")
     assert r.status_code == 200
-    assert 'hx-trigger="every 1.5s [!window.__lanScanIsEditing(this)]"' in r.text
+    assert 'hx-swap-oob="beforeend:#lan-scan-devices"' in r.text
+    assert "Kitchen TV" in r.text
+    assert lan_discovery._state.rendered_count == 1
+
+
+def test_lan_scan_poll_does_not_resend_already_delivered_devices(
+    app_with_tmp_config,
+) -> None:
+    """The core regression: once a device has been sent to the client (full
+    render or a prior poll), later polls must not include it again — that's
+    what makes it safe for the poll to never touch #lan-scan-devices."""
+    app, _ = app_with_tmp_config
+    from app.services import lan_discovery
+
+    lan_discovery._state = lan_discovery.ScanState(
+        scanning=True,
+        devices=[{"screen_id": "already-sent", "name": "Living Room TV", "offset": 0}],
+        rendered_count=1,  # already delivered in an earlier render/poll
+    )
+    client = TestClient(app)
+    r = client.get("/pair/lan-scan/poll")
+    assert r.status_code == 200
+    assert "Living Room TV" not in r.text
+    assert 'hx-swap-oob="beforeend:#lan-scan-devices"' not in r.text
+
+
+def test_pair_index_marks_current_devices_as_delivered(app_with_tmp_config) -> None:
+    """A full /pair page load must not cause the next poll to re-append
+    devices that are already in that page's initial HTML."""
+    app, _ = app_with_tmp_config
+    from app.services import lan_discovery
+
+    lan_discovery._state = lan_discovery.ScanState(
+        scanning=True,
+        devices=[{"screen_id": "seen-1", "name": "Bedroom TV", "offset": 0}],
+        rendered_count=0,
+    )
+    client = TestClient(app)
+    r = client.get("/pair")
+    assert r.status_code == 200
+    assert "Bedroom TV" in r.text
+    assert lan_discovery._state.rendered_count == 1
 
 
 def test_lan_scan_start_kicks_off_background_scan(

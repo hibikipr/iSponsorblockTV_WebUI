@@ -300,3 +300,53 @@ async def test_start_scan_records_error_and_clears_scanning_flag(
     final = lan_discovery.get_state()
     assert final.scanning is False
     assert "socket bind failed" in final.error
+
+
+def test_take_new_devices_returns_only_undelivered_and_advances_watermark() -> None:
+    state = lan_discovery.ScanState(
+        devices=[
+            {"screen_id": "a", "name": "A", "offset": 0},
+            {"screen_id": "b", "name": "B", "offset": 0},
+        ],
+        rendered_count=1,  # "a" already delivered
+    )
+    lan_discovery._state = state
+
+    new = lan_discovery.take_new_devices()
+    assert [d["screen_id"] for d in new] == ["b"]
+    assert state.rendered_count == 2
+
+    # A second call with nothing new added returns an empty list.
+    assert lan_discovery.take_new_devices() == []
+    assert state.rendered_count == 2
+
+
+def test_mark_all_delivered_sets_watermark_to_current_length() -> None:
+    state = lan_discovery.ScanState(
+        devices=[{"screen_id": "a", "name": "A", "offset": 0}],
+        rendered_count=0,
+    )
+    lan_discovery._state = state
+
+    lan_discovery.mark_all_delivered()
+    assert state.rendered_count == 1
+    assert lan_discovery.take_new_devices() == []
+
+
+@pytest.mark.asyncio
+async def test_start_scan_resets_rendered_count(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A fresh scan must not let a stale watermark from the previous scan
+    suppress re-sending devices found this time around."""
+
+    async def fake_discover():
+        return
+        yield  # pragma: no cover - unreachable, makes this an async generator
+
+    monkeypatch.setattr(lan_discovery, "discover", fake_discover)
+    lan_discovery._state = lan_discovery.ScanState(
+        devices=[{"screen_id": "stale", "name": "Stale", "offset": 0}],
+        rendered_count=1,
+    )
+
+    await lan_discovery.start_scan()
+    assert lan_discovery.get_state().rendered_count == 0
