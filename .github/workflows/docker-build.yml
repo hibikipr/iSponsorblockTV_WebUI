@@ -40,6 +40,7 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
 
       - name: Build and push
+        id: build
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -49,3 +50,45 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # A successful build only proves the pip install and file layout are
+      # valid, not that the app actually starts. Boots the just-pushed
+      # image on both platforms and confirms /healthz responds - by
+      # digest, not a tag, so this is unambiguously the image this job
+      # just built.
+      - name: Verify the image boots and serves /healthz
+        run: |
+          IMAGE="ghcr.io/${{ github.repository_owner }}/isponsorblocktv-webui@${{ steps.build.outputs.digest }}"
+          for platform in linux/amd64 linux/arm64; do
+            echo "::group::Verifying boot on ${platform}"
+            docker run -d --name healthz-check --platform "${platform}" \
+              -p 18099:8099 -e WEBUI_HOST=0.0.0.0 -e WEBUI_PASSWORD=ci-smoke-test \
+              "${IMAGE}"
+
+            ok=""
+            for i in $(seq 1 15); do
+              if body="$(curl -fsS http://localhost:18099/healthz 2>/dev/null)"; then
+                ok="${body}"
+                break
+              fi
+              sleep 1
+            done
+
+            docker logs healthz-check || true
+            docker rm -f healthz-check >/dev/null 2>&1 || true
+            # See obico-server's own build-images.yaml (hibikipr/obico-server
+            # PR #3) for why this matters: without it, the next platform's
+            # pull of the same digest reference fails outright with
+            # "docker: cannot overwrite digest" - the local image store
+            # ties a digest to one specific image's content, and two
+            # different real images (amd64 vs arm64) can't both live under
+            # that same reference at once.
+            docker rmi "${IMAGE}" >/dev/null 2>&1 || true
+
+            if [ -z "${ok}" ]; then
+              echo "::error::${platform}: container never responded on /healthz"
+              exit 1
+            fi
+            echo "${platform}: /healthz -> ${ok}"
+            echo "::endgroup::"
+          done
