@@ -1,5 +1,5 @@
 <div id="lan-scan-results"
-     {% if lan_state.scanning %}hx-get="/pair/lan-scan/poll" hx-trigger="every 1.5s" hx-swap="outerHTML"{% endif %}>
+     {% if lan_state.scanning %}hx-get="/pair/lan-scan/poll" hx-trigger="every 1.5s [!window.__lanScanIsEditing(this)]" hx-swap="outerHTML"{% endif %}>
   {% if lan_state.scanning %}
   <p class="caption" aria-live="polite">
     <span aria-busy="true">Scanning the local network…</span>

@@ -653,19 +653,35 @@ def test_pair_page_renders_lan_scan_idle_state(app_with_tmp_config) -> None:
     assert 'hx-post="/pair/lan-scan"' in r.text
 
 
-def test_pair_page_guards_in_progress_edits_from_poll_swap(app_with_tmp_config) -> None:
+def test_pair_page_defines_lan_scan_editing_guard(app_with_tmp_config) -> None:
     """Issue #3 follow-up: a real-hardware test found the LAN scan poll
-    (every 1.5s while scanning) was wiping out an in-progress "Display name"
-    edit on an already-found device, since it fully replaces
-    #lan-scan-results on every tick. /pair must ship the htmx:beforeRequest
-    guard that skips a poll swap while an unsubmitted field differs from its
-    default."""
+    (every 1.5s while scanning) was resetting an in-progress "Display name"
+    edit on an already-found device on every tick — including mid-keystroke.
+    A first fix tried htmx:beforeRequest + preventDefault(), which does not
+    reliably stop an `every Ns` trigger from re-firing on schedule. /pair
+    must define the __lanScanIsEditing global that the poll's hx-trigger
+    filter (see test below) actually uses to skip a tick."""
     app, _ = app_with_tmp_config
     client = TestClient(app)
     r = client.get("/pair")
     assert r.status_code == 200
-    assert "htmx:beforeRequest" in r.text
-    assert "input.value !== input.defaultValue" in r.text
+    assert "window.__lanScanIsEditing" in r.text
+
+
+def test_lan_scan_poll_trigger_uses_editing_filter_while_scanning(
+    app_with_tmp_config,
+) -> None:
+    """The poll div's hx-trigger must use htmx's `[filter]` syntax (not a
+    document-level beforeRequest listener) so a mid-edit tick is skipped
+    without disrupting the `every 1.5s` interval itself."""
+    app, _ = app_with_tmp_config
+    from app.services import lan_discovery
+
+    lan_discovery._state = lan_discovery.ScanState(scanning=True)
+    client = TestClient(app)
+    r = client.get("/pair/lan-scan/poll")
+    assert r.status_code == 200
+    assert 'hx-trigger="every 1.5s [!window.__lanScanIsEditing(this)]"' in r.text
 
 
 def test_lan_scan_start_kicks_off_background_scan(
