@@ -636,3 +636,169 @@ def test_pair_save_appends_device(app_with_tmp_config) -> None:
     assert on_disk["devices"] == [
         {"screen_id": "abc-screen", "name": "Bedroom", "offset": 0}
     ]
+
+
+def test_pair_page_renders_lan_scan_idle_state(app_with_tmp_config) -> None:
+    """Issue #3: idle state (no scan run yet) shows a "Scan LAN" button, not
+    stale "not yet supported" copy."""
+    app, _ = app_with_tmp_config
+    from app.services import lan_discovery
+
+    lan_discovery._state = lan_discovery.ScanState()
+    client = TestClient(app)
+    r = client.get("/pair")
+    assert r.status_code == 200
+    assert "LAN auto-discovery" in r.text
+    assert "Scan LAN" in r.text
+    assert 'hx-post="/pair/lan-scan"' in r.text
+
+
+def test_lan_scan_device_row_targets_its_own_result_div(app_with_tmp_config) -> None:
+    """A LAN-scanned device's "Add to config" form must not target
+    #pair-result — that lives in the "Pair with TV code" section, so a
+    "device already in config" error from a LAN-discovered device showed up
+    in an unrelated part of the page instead of next to the button the user
+    actually clicked."""
+    app, _ = app_with_tmp_config
+    from app.services import lan_discovery
+
+    lan_discovery._state = lan_discovery.ScanState(
+        scanning=False,
+        devices=[{"screen_id": "found-1", "name": "Kitchen TV", "offset": 0}],
+        rendered_count=0,
+    )
+    client = TestClient(app)
+    r = client.get("/pair/lan-scan/poll")
+    assert r.status_code == 200
+    assert 'hx-target="#lan-device-result-found-1"' in r.text
+    assert 'hx-target="#pair-result"' not in r.text
+    assert '<div id="lan-device-result-found-1">' in r.text
+
+
+def test_lan_scan_poll_appends_new_device_via_oob_not_full_swap(
+    app_with_tmp_config,
+) -> None:
+    """Issue #3 follow-up: two earlier attempts (htmx:beforeRequest +
+    preventDefault(), then an `every Ns [filter]` trigger) both tried to
+    skip a poll tick while a device row was being edited, and neither held
+    up under real-hardware testing — the poll kept fully re-rendering
+    #lan-scan-results and resetting the "Display name" field on every 1.5s
+    tick regardless. The actual fix: the poll response never re-renders the
+    devices list at all. It only refreshes the status strip and appends
+    newly discovered devices via an out-of-band swap targeting
+    #lan-scan-devices, so an already-rendered row (mid-edit or not) is
+    structurally untouched by any poll response."""
+    app, _ = app_with_tmp_config
+    from app.services import lan_discovery
+
+    lan_discovery._state = lan_discovery.ScanState(
+        scanning=True,
+        devices=[{"screen_id": "new-1", "name": "Kitchen TV", "offset": 0}],
+        rendered_count=0,
+    )
+    client = TestClient(app)
+    r = client.get("/pair/lan-scan/poll")
+    assert r.status_code == 200
+    assert 'hx-swap-oob="beforeend:#lan-scan-devices"' in r.text
+    assert "Kitchen TV" in r.text
+    assert lan_discovery._state.rendered_count == 1
+
+
+def test_lan_scan_poll_does_not_resend_already_delivered_devices(
+    app_with_tmp_config,
+) -> None:
+    """The core regression: once a device has been sent to the client (full
+    render or a prior poll), later polls must not include it again — that's
+    what makes it safe for the poll to never touch #lan-scan-devices."""
+    app, _ = app_with_tmp_config
+    from app.services import lan_discovery
+
+    lan_discovery._state = lan_discovery.ScanState(
+        scanning=True,
+        devices=[{"screen_id": "already-sent", "name": "Living Room TV", "offset": 0}],
+        rendered_count=1,  # already delivered in an earlier render/poll
+    )
+    client = TestClient(app)
+    r = client.get("/pair/lan-scan/poll")
+    assert r.status_code == 200
+    assert "Living Room TV" not in r.text
+    assert 'hx-swap-oob="beforeend:#lan-scan-devices"' not in r.text
+
+
+def test_pair_index_marks_current_devices_as_delivered(app_with_tmp_config) -> None:
+    """A full /pair page load must not cause the next poll to re-append
+    devices that are already in that page's initial HTML."""
+    app, _ = app_with_tmp_config
+    from app.services import lan_discovery
+
+    lan_discovery._state = lan_discovery.ScanState(
+        scanning=True,
+        devices=[{"screen_id": "seen-1", "name": "Bedroom TV", "offset": 0}],
+        rendered_count=0,
+    )
+    client = TestClient(app)
+    r = client.get("/pair")
+    assert r.status_code == 200
+    assert "Bedroom TV" in r.text
+    assert lan_discovery._state.rendered_count == 1
+
+
+def test_lan_scan_start_kicks_off_background_scan(
+    app_with_tmp_config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Issue #3: POST /pair/lan-scan must not block on the real (10s+)
+    discovery cycle — it starts the scan and returns the in-progress partial."""
+    app, _ = app_with_tmp_config
+    from app.services import lan_discovery
+
+    lan_discovery._state = lan_discovery.ScanState()
+
+    called = {}
+
+    async def fake_start_scan():
+        called["started"] = True
+        lan_discovery._state.scanning = True
+        return lan_discovery._state
+
+    monkeypatch.setattr(lan_discovery, "start_scan", fake_start_scan)
+
+    client = TestClient(app)
+    r = client.post("/pair/lan-scan")
+    assert r.status_code == 200
+    assert called.get("started") is True
+    assert 'hx-get="/pair/lan-scan/poll"' in r.text
+    assert "Scanning the local network" in r.text
+
+
+def test_lan_scan_poll_renders_discovered_devices(app_with_tmp_config) -> None:
+    """Issue #3: once a scan completes, the poll endpoint stops polling and
+    lists discovered devices with an "Add to config" form each."""
+    app, _ = app_with_tmp_config
+    from app.services import lan_discovery
+
+    lan_discovery._state = lan_discovery.ScanState(
+        scanning=False,
+        devices=[{"screen_id": "found-1", "name": "Kitchen TV", "offset": 0}],
+    )
+
+    client = TestClient(app)
+    r = client.get("/pair/lan-scan/poll")
+    assert r.status_code == 200
+    assert "Kitchen TV" in r.text
+    assert "found-1" in r.text
+    assert 'hx-post="/pair/save"' in r.text
+    assert 'hx-get="/pair/lan-scan/poll"' not in r.text  # polling stopped
+    assert "Scan again" in r.text
+
+
+def test_lan_scan_poll_renders_error_state(app_with_tmp_config) -> None:
+    app, _ = app_with_tmp_config
+    from app.services import lan_discovery
+
+    lan_discovery._state = lan_discovery.ScanState(scanning=False, error="Scan failed: boom")
+
+    client = TestClient(app)
+    r = client.get("/pair/lan-scan/poll")
+    assert r.status_code == 200
+    assert "Scan failed: boom" in r.text
+    assert 'hx-get="/pair/lan-scan/poll"' not in r.text
