@@ -7,6 +7,8 @@ breaking template / route changes are still possible.
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-08-25
+
 ### Added (#3)
 - **LAN auto-discovery for pairing.** `/pair` can now scan the local
   network via SSDP/DIAL instead of requiring a 12-digit TV code: `Scan
