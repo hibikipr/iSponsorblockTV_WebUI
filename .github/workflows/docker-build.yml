@@ -65,8 +65,13 @@ jobs:
               -p 18099:8099 -e WEBUI_HOST=0.0.0.0 -e WEBUI_PASSWORD=ci-smoke-test \
               "${IMAGE}"
 
+            # 40x1s, not 15 - found in production (this exact check's
+            # first real CI run): the amd64 leg answers in ~4s (native to
+            # the runner), but arm64 was still starting up under QEMU
+            # emulation at the 15s mark and the check failed as a false
+            # negative, not a real boot failure.
             ok=""
-            for i in $(seq 1 15); do
+            for i in $(seq 1 40); do
               if body="$(curl -fsS http://localhost:18099/healthz 2>/dev/null)"; then
                 ok="${body}"
                 break
