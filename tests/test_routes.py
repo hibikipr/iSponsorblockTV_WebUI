@@ -653,6 +653,28 @@ def test_pair_page_renders_lan_scan_idle_state(app_with_tmp_config) -> None:
     assert 'hx-post="/pair/lan-scan"' in r.text
 
 
+def test_lan_scan_device_row_targets_its_own_result_div(app_with_tmp_config) -> None:
+    """A LAN-scanned device's "Add to config" form must not target
+    #pair-result — that lives in the "Pair with TV code" section, so a
+    "device already in config" error from a LAN-discovered device showed up
+    in an unrelated part of the page instead of next to the button the user
+    actually clicked."""
+    app, _ = app_with_tmp_config
+    from app.services import lan_discovery
+
+    lan_discovery._state = lan_discovery.ScanState(
+        scanning=False,
+        devices=[{"screen_id": "found-1", "name": "Kitchen TV", "offset": 0}],
+        rendered_count=0,
+    )
+    client = TestClient(app)
+    r = client.get("/pair/lan-scan/poll")
+    assert r.status_code == 200
+    assert 'hx-target="#lan-device-result-found-1"' in r.text
+    assert 'hx-target="#pair-result"' not in r.text
+    assert '<div id="lan-device-result-found-1">' in r.text
+
+
 def test_lan_scan_poll_appends_new_device_via_oob_not_full_swap(
     app_with_tmp_config,
 ) -> None:
