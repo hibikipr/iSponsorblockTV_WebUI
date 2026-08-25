@@ -636,3 +636,79 @@ def test_pair_save_appends_device(app_with_tmp_config) -> None:
     assert on_disk["devices"] == [
         {"screen_id": "abc-screen", "name": "Bedroom", "offset": 0}
     ]
+
+
+def test_pair_page_renders_lan_scan_idle_state(app_with_tmp_config) -> None:
+    """Issue #3: idle state (no scan run yet) shows a "Scan LAN" button, not
+    stale "not yet supported" copy."""
+    app, _ = app_with_tmp_config
+    from app.services import lan_discovery
+
+    lan_discovery._state = lan_discovery.ScanState()
+    client = TestClient(app)
+    r = client.get("/pair")
+    assert r.status_code == 200
+    assert "LAN auto-discovery" in r.text
+    assert "Scan LAN" in r.text
+    assert 'hx-post="/pair/lan-scan"' in r.text
+
+
+def test_lan_scan_start_kicks_off_background_scan(
+    app_with_tmp_config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Issue #3: POST /pair/lan-scan must not block on the real (10s+)
+    discovery cycle — it starts the scan and returns the in-progress partial."""
+    app, _ = app_with_tmp_config
+    from app.services import lan_discovery
+
+    lan_discovery._state = lan_discovery.ScanState()
+
+    called = {}
+
+    async def fake_start_scan():
+        called["started"] = True
+        lan_discovery._state.scanning = True
+        return lan_discovery._state
+
+    monkeypatch.setattr(lan_discovery, "start_scan", fake_start_scan)
+
+    client = TestClient(app)
+    r = client.post("/pair/lan-scan")
+    assert r.status_code == 200
+    assert called.get("started") is True
+    assert 'hx-get="/pair/lan-scan/poll"' in r.text
+    assert "Scanning the local network" in r.text
+
+
+def test_lan_scan_poll_renders_discovered_devices(app_with_tmp_config) -> None:
+    """Issue #3: once a scan completes, the poll endpoint stops polling and
+    lists discovered devices with an "Add to config" form each."""
+    app, _ = app_with_tmp_config
+    from app.services import lan_discovery
+
+    lan_discovery._state = lan_discovery.ScanState(
+        scanning=False,
+        devices=[{"screen_id": "found-1", "name": "Kitchen TV", "offset": 0}],
+    )
+
+    client = TestClient(app)
+    r = client.get("/pair/lan-scan/poll")
+    assert r.status_code == 200
+    assert "Kitchen TV" in r.text
+    assert "found-1" in r.text
+    assert 'hx-post="/pair/save"' in r.text
+    assert 'hx-get="/pair/lan-scan/poll"' not in r.text  # polling stopped
+    assert "Scan again" in r.text
+
+
+def test_lan_scan_poll_renders_error_state(app_with_tmp_config) -> None:
+    app, _ = app_with_tmp_config
+    from app.services import lan_discovery
+
+    lan_discovery._state = lan_discovery.ScanState(scanning=False, error="Scan failed: boom")
+
+    client = TestClient(app)
+    r = client.get("/pair/lan-scan/poll")
+    assert r.status_code == 200
+    assert "Scan failed: boom" in r.text
+    assert 'hx-get="/pair/lan-scan/poll"' not in r.text

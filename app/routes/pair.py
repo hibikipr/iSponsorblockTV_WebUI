@@ -1,19 +1,30 @@
-"""Device pairing routes: GET /pair, POST /pair/code, POST /pair/save."""
+"""Device pairing routes: GET /pair, POST /pair/code, POST /pair/save,
+POST /pair/lan-scan, GET /pair/lan-scan/poll."""
+
 from __future__ import annotations
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse
 
-from app.services import config_io
+from app.services import config_io, lan_discovery
 from app.services import pairing as pairing_service
 
 router = APIRouter()
 
 
+def _pair_context(request: Request, **extra) -> dict:
+    return {
+        "active": "pair",
+        "lan_state": lan_discovery.get_state(),
+        "launch_pair_timeout": lan_discovery.LAUNCH_PAIR_TIMEOUT,
+        **extra,
+    }
+
+
 @router.get("", response_class=HTMLResponse)
 async def index(request: Request) -> HTMLResponse:
     return request.app.state.templates.TemplateResponse(
-        request, "pair.html", {"active": "pair"}
+        request, "pair.html", _pair_context(request)
     )
 
 
@@ -48,7 +59,22 @@ async def pair_save(
     config_io.save(cfg)
     return HTMLResponse(
         '<article class="toast ok">'
-        f'Device <strong>{display_name or name}</strong> added to config. '
+        f"Device <strong>{display_name or name}</strong> added to config. "
         'Restart the service from the <a href="/">config page</a> to apply.'
-        '</article>'
+        "</article>"
+    )
+
+
+@router.post("/lan-scan", response_class=HTMLResponse)
+async def lan_scan_start(request: Request) -> HTMLResponse:
+    await lan_discovery.start_scan()
+    return request.app.state.templates.TemplateResponse(
+        request, "partials/lan_scan_results.html", _pair_context(request)
+    )
+
+
+@router.get("/lan-scan/poll", response_class=HTMLResponse)
+async def lan_scan_poll(request: Request) -> HTMLResponse:
+    return request.app.state.templates.TemplateResponse(
+        request, "partials/lan_scan_results.html", _pair_context(request)
     )
