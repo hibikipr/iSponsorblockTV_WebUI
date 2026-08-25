@@ -42,6 +42,25 @@ YOUTUBE_SERVICE_XML_NO_SCREEN = """<?xml version="1.0" encoding="UTF-8"?>
 </service>"""
 
 
+@pytest.mark.asyncio
+async def test_handler_is_usable_as_its_own_protocol_factory() -> None:
+    """Regression: `loop.create_datagram_endpoint(handler, ...)` calls
+    `handler()` to obtain a protocol instance — without `_Handler.__call__`
+    that raises `TypeError: '_Handler' object is not callable` the moment a
+    scan actually starts, which unit tests that only exercise
+    `_find_youtube_app` over a mocked transport never hit `discover()`
+    doesn't catch. Bind on loopback so this doesn't need real network."""
+    handler = lan_discovery._Handler()
+    loop = asyncio.get_running_loop()
+    transport, protocol = await loop.create_datagram_endpoint(
+        handler, local_addr=("127.0.0.1", 0)
+    )
+    try:
+        assert protocol is handler
+    finally:
+        transport.close()
+
+
 def test_url_matches_ip_true_for_matching_host() -> None:
     assert lan_discovery._url_matches_ip("http://192.168.1.50:8008/dial", "192.168.1.50")
 

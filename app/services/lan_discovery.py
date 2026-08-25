@@ -87,6 +87,13 @@ class _Handler(ssdp.aio.SSDP):
         super().__init__()
         self.devices_queue: asyncio.Queue[tuple[str, str]] = asyncio.Queue()
 
+    def __call__(self) -> "_Handler":
+        """Makes the instance usable as its own protocol_factory for
+        `loop.create_datagram_endpoint()`, which calls the factory to obtain
+        a fresh protocol object — we want it to hand back this same instance
+        so callers can still read `devices_queue` off of it."""
+        return self
+
     def response_received(self, response, addr) -> None:
         headers = {k.lower(): v for k, v in response.headers}
         location = headers.get("location")
