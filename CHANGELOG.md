@@ -7,6 +7,14 @@ breaking template / route changes are still possible.
 
 ## [Unreleased]
 
+## [0.3.1] — 2026-08-25
+
+### Fixed
+- `/healthz` reported `0.2.0` in the v0.3.0 image — `app/__init__.py`'s
+  `__version__` is a separate hardcoded literal from `pyproject.toml`'s
+  `version` field, and only the latter got bumped. Added a test asserting
+  the two stay in sync.
+
 ## [0.3.0] — 2026-08-25
 
 ### Added (#3)

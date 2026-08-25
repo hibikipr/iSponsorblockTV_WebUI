@@ -35,6 +35,23 @@ def test_healthz_reports_version(app_with_tmp_config) -> None:
     assert body == {"status": "ok", "version": __version__}
 
 
+def test_version_matches_pyproject() -> None:
+    """v0.3.0 shipped with `/healthz` reporting 0.2.0 - app/__init__.py's
+    __version__ is a separate hardcoded literal from pyproject.toml's
+    `version`, and only the latter got bumped for that release. Regex
+    instead of a TOML parser since this is the only place in the repo that
+    would need one."""
+    import re
+    from pathlib import Path
+
+    from app import __version__
+
+    pyproject = (Path(__file__).parent.parent / "pyproject.toml").read_text()
+    match = re.search(r'(?m)^version\s*=\s*"([^"]+)"', pyproject)
+    assert match, "couldn't find version = \"...\" in pyproject.toml"
+    assert __version__ == match.group(1)
+
+
 def test_favicon_svg_served(app_with_tmp_config) -> None:
     """Issue #18: /favicon.svg returns the bundled icon."""
     app, _ = app_with_tmp_config
