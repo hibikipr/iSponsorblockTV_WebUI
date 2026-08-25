@@ -43,4 +43,30 @@
   </p>
   {% include "partials/lan_scan_results.html" %}
 </article>
+<script>
+  // #lan-scan-results polls itself every 1.5s while a scan is still
+  // resolving other devices (issue #3 follow-up: a first pass replaced the
+  // whole div on every poll tick, which wiped out whatever "Display name"
+  // edit was in progress on an already-found device). Skip a poll swap
+  // while any not-yet-submitted field inside it differs from its rendered
+  // default; mark a row as submitted once its "Add to config" form
+  // succeeds so it stops blocking future polls.
+  (function () {
+    document.addEventListener('htmx:afterRequest', function (e) {
+      const elt = e.detail.elt;
+      if (!elt || !e.detail.successful || !elt.closest('#lan-scan-results')) return;
+      const row = elt.closest('li');
+      if (row) row.dataset.submitted = 'true';
+    });
+
+    document.addEventListener('htmx:beforeRequest', function (e) {
+      const elt = e.detail.elt;
+      if (!elt || elt.id !== 'lan-scan-results') return;
+      const dirty = Array.from(elt.querySelectorAll('input')).some(function (input) {
+        return !input.closest('[data-submitted]') && input.value !== input.defaultValue;
+      });
+      if (dirty) e.preventDefault();
+    });
+  })();
+</script>
 {% endblock %}

@@ -653,6 +653,21 @@ def test_pair_page_renders_lan_scan_idle_state(app_with_tmp_config) -> None:
     assert 'hx-post="/pair/lan-scan"' in r.text
 
 
+def test_pair_page_guards_in_progress_edits_from_poll_swap(app_with_tmp_config) -> None:
+    """Issue #3 follow-up: a real-hardware test found the LAN scan poll
+    (every 1.5s while scanning) was wiping out an in-progress "Display name"
+    edit on an already-found device, since it fully replaces
+    #lan-scan-results on every tick. /pair must ship the htmx:beforeRequest
+    guard that skips a poll swap while an unsubmitted field differs from its
+    default."""
+    app, _ = app_with_tmp_config
+    client = TestClient(app)
+    r = client.get("/pair")
+    assert r.status_code == 200
+    assert "htmx:beforeRequest" in r.text
+    assert "input.value !== input.defaultValue" in r.text
+
+
 def test_lan_scan_start_kicks_off_background_scan(
     app_with_tmp_config, monkeypatch: pytest.MonkeyPatch
 ) -> None:
