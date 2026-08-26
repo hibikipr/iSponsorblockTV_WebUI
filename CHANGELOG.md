@@ -7,6 +7,17 @@ breaking template / route changes are still possible.
 
 ## [Unreleased]
 
+## [0.3.3] — 2026-08-25
+
+### Fixed
+- **"Save and restart" stayed disabled after adding a device via `/pair`,**
+  with no way to trigger the restart the new device actually needed. That
+  button is dirty-gated to the config page's own form, which a device
+  added via `/pair` never touches. New standalone `POST /restart` (no
+  config diff required); `/pair/save`'s success message now posts to it
+  directly instead of linking to a page with a dead-end control. Found via
+  a real deployment — a paired device silently never took effect.
+
 ## [0.3.2] — 2026-08-25
 
 ### Fixed
