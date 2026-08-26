@@ -7,6 +7,18 @@ breaking template / route changes are still possible.
 
 ## [Unreleased]
 
+## [0.3.2] — 2026-08-25
+
+### Fixed
+- **`/logs` showed "No log lines returned" for containers that log to
+  stderr.** `_run_tail()` captured stdout and stderr separately and only
+  used stdout for the success path — Python's `logging` module defaults to
+  a stderr `StreamHandler`, so iSponsorBlockTV's actual log content never
+  landed on the stream this code looked at. `docker ps`/`docker inspect`
+  succeeded (`method: "docker"`), so no error surfaced either — just a
+  silently empty tail. Found via a real deployment. stderr is now merged
+  into stdout, matching what `docker logs`/`journalctl` show interactively.
+
 ## [0.3.1] — 2026-08-25
 
 ### Fixed
