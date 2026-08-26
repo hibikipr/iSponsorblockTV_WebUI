@@ -60,10 +60,18 @@ async def pair_save(
     devices.append({"screen_id": screen_id, "name": display_name or name, "offset": offset})
     cfg["devices"] = devices
     config_io.save(cfg)
+    # Not a link to the config page's own Save button: that button is
+    # dirty-gated (disabled until its form is edited), so it stays disabled
+    # here since nothing was edited *there* - this config.json change came
+    # from this page instead. POSTs straight to the standalone /restart
+    # endpoint so there's actually something clickable to apply it with.
     return HTMLResponse(
         '<article class="toast ok">'
         f"Device <strong>{display_name or name}</strong> added to config. "
-        'Restart the service from the <a href="/">config page</a> to apply.'
+        "Restart to apply it: "
+        '<form hx-post="/restart" hx-swap="none" style="display:inline;">'
+        '<button type="submit" class="secondary">Restart service</button>'
+        "</form>"
         "</article>"
     )
 
