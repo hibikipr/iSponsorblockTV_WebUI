@@ -1,4 +1,5 @@
 """Smoke tests for HTTP routes via FastAPI TestClient."""
+
 from __future__ import annotations
 
 import json
@@ -17,8 +18,10 @@ def app_with_tmp_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     import importlib
 
     from app import settings as settings_mod
+
     importlib.reload(settings_mod)
     from app import main as main_mod
+
     importlib.reload(main_mod)
     return main_mod.app, tmp_path
 
@@ -72,7 +75,7 @@ def test_index_links_favicon(app_with_tmp_config) -> None:
     r = client.get("/")
     assert r.status_code == 200
     assert 'rel="icon"' in r.text
-    assert '/favicon.svg' in r.text
+    assert "/favicon.svg" in r.text
 
 
 def test_static_mount_serves_app_css(app_with_tmp_config) -> None:
@@ -105,9 +108,7 @@ def test_save_persists_config(app_with_tmp_config) -> None:
     preserved across saves that don't touch them."""
     app, tmp = app_with_tmp_config
     # Pre-seed apikey on disk so we can verify /save preserves it.
-    (tmp / "config.json").write_text(
-        json.dumps({"apikey": "preserved-key", "use_proxy": True})
-    )
+    (tmp / "config.json").write_text(json.dumps({"apikey": "preserved-key", "use_proxy": True}))
     client = TestClient(app)
     r = client.post(
         "/save",
@@ -128,9 +129,7 @@ def test_save_persists_config(app_with_tmp_config) -> None:
     on_disk = json.loads((tmp / "config.json").read_text())
     assert on_disk["apikey"] == "preserved-key"
     assert on_disk["use_proxy"] is True
-    assert on_disk["devices"] == [
-        {"screen_id": "screen-xyz", "name": "Living", "offset": 100}
-    ]
+    assert on_disk["devices"] == [{"screen_id": "screen-xyz", "name": "Living", "offset": 100}]
     assert on_disk["mute_ads"] is True
     assert on_disk["skip_ads"] is False
     assert "selfpromo" in on_disk["skip_categories"]
@@ -420,10 +419,7 @@ def test_round5_channels_apikey_link(app_with_tmp_config) -> None:
     client = TestClient(app)
     r = client.get("/channels")
     body = r.text
-    assert (
-        '<a href="https://developers.google.com/youtube/v3/getting-started"'
-        in body
-    )
+    assert '<a href="https://developers.google.com/youtube/v3/getting-started"' in body
     assert "YouTube Data API key</a>" in body
 
 
@@ -521,9 +517,7 @@ def test_save_button_disabled_when_running(app_with_tmp_config, monkeypatch) -> 
     from app.services import service_status as ss
 
     app, _ = app_with_tmp_config
-    monkeypatch.setattr(
-        ss, "status", lambda: ss.Status("docker", True, "container running")
-    )
+    monkeypatch.setattr(ss, "status", lambda: ss.Status("docker", True, "container running"))
     client = TestClient(app)
     r = client.get("/")
     assert r.status_code == 200
@@ -539,9 +533,7 @@ def test_save_button_start_mode_when_stopped(app_with_tmp_config, monkeypatch) -
     from app.services import service_status as ss
 
     app, _ = app_with_tmp_config
-    monkeypatch.setattr(
-        ss, "status", lambda: ss.Status("docker", False, "container stopped")
-    )
+    monkeypatch.setattr(ss, "status", lambda: ss.Status("docker", False, "container stopped"))
     client = TestClient(app)
     r = client.get("/")
     assert r.status_code == 200
@@ -549,13 +541,11 @@ def test_save_button_start_mode_when_stopped(app_with_tmp_config, monkeypatch) -
     assert 'data-mode="start"' in r.text
     # The save-btn line itself must not be disabled. Other elements may be
     # disabled, so anchor on the button id.
-    btn_line = next(
-        line for line in r.text.splitlines() if 'id="save-btn"' in line
-    )
+    btn_line = next(line for line in r.text.splitlines() if 'id="save-btn"' in line)
     # button tag spans multiple lines — collect until '>'
     idx = r.text.index('id="save-btn"')
     tag_close = r.text.index(">", idx)
-    btn_tag = r.text[r.text.rindex("<", 0, idx):tag_close + 1]
+    btn_tag = r.text[r.text.rindex("<", 0, idx) : tag_close + 1]
     assert "disabled" not in btn_tag
 
 
@@ -564,16 +554,14 @@ def test_save_button_legacy_when_unknown(app_with_tmp_config, monkeypatch) -> No
     from app.services import service_status as ss
 
     app, _ = app_with_tmp_config
-    monkeypatch.setattr(
-        ss, "status", lambda: ss.Status("none", False, "no detection")
-    )
+    monkeypatch.setattr(ss, "status", lambda: ss.Status("none", False, "no detection"))
     client = TestClient(app)
     r = client.get("/")
     assert r.status_code == 200
     assert "Save and restart service" in r.text
     idx = r.text.index('id="save-btn"')
     tag_close = r.text.index(">", idx)
-    btn_tag = r.text[r.text.rindex("<", 0, idx):tag_close + 1]
+    btn_tag = r.text[r.text.rindex("<", 0, idx) : tag_close + 1]
     assert "disabled" not in btn_tag
     assert 'data-no-dirty-gate="1"' in btn_tag
 
@@ -606,8 +594,12 @@ def test_tab_bar_active_class_per_page(app_with_tmp_config) -> None:
     app, _ = app_with_tmp_config
     client = TestClient(app)
 
-    for path, label in [("/", "Config"), ("/pair", "Pair Device"),
-                         ("/channels", "Channels"), ("/logs", "Logs")]:
+    for path, label in [
+        ("/", "Config"),
+        ("/pair", "Pair Device"),
+        ("/channels", "Channels"),
+        ("/logs", "Logs"),
+    ]:
         r = client.get(path)
         assert r.status_code == 200, path
         # The active tab gets the 'active' CSS class.
@@ -633,6 +625,43 @@ def test_pair_save_appends_device(app_with_tmp_config) -> None:
     assert r.status_code == 200
     assert "added to config" in r.text
     on_disk = json.loads((tmp / "config.json").read_text())
-    assert on_disk["devices"] == [
-        {"screen_id": "abc-screen", "name": "Bedroom", "offset": 0}
-    ]
+    assert on_disk["devices"] == [{"screen_id": "abc-screen", "name": "Bedroom", "offset": 0}]
+
+
+def test_pair_save_offers_a_working_restart_button(app_with_tmp_config) -> None:
+    """Bug found on a real deployment: the config page's Save button is
+    dirty-gated (disabled until *that* form is edited client-side), so
+    after a device is added via /pair - which changes config.json without
+    touching the config form at all - a user following "restart from the
+    config page" lands on a button that's disabled for exactly the reason
+    they're there, with no way to trigger the restart they actually need.
+    The success message must instead offer something that actually posts
+    to a restart endpoint, not just a link to a page with a stuck button."""
+    app, _ = app_with_tmp_config
+    client = TestClient(app)
+    r = client.post(
+        "/pair/save",
+        data={"screen_id": "xyz", "name": "TV", "display_name": "Kitchen", "offset": "0"},
+    )
+    assert r.status_code == 200
+    assert 'hx-post="/restart"' in r.text
+    assert '<a href="/">config page</a>' not in r.text
+
+
+def test_restart_endpoint_works_without_a_config_save(
+    app_with_tmp_config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """/restart must be independently callable - no config diff required -
+    since that's the whole point (see test above)."""
+    app, _ = app_with_tmp_config
+    from app.services import restart as restart_service
+
+    monkeypatch.setattr(
+        restart_service,
+        "restart",
+        lambda: restart_service.RestartResult(True, "docker", "restarted"),
+    )
+    client = TestClient(app)
+    r = client.post("/restart")
+    assert r.status_code == 200
+    assert "restarted" in r.text
