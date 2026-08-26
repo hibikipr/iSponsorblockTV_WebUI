@@ -212,11 +212,28 @@ def tail_logs(n: int = DEFAULT_TAIL_LINES) -> LogsResult:
 
 
 def _run_tail(cmd: list[str], method: str) -> LogsResult:
+    # stderr merged into stdout, not captured separately: Python's own
+    # `logging` module defaults to a StreamHandler on sys.stderr, and
+    # iSponsorBlockTV (and plenty of other containerized apps) never
+    # reconfigures it - `docker logs`/`journalctl` faithfully report exactly
+    # what the process wrote, which for a stderr-logging app means the
+    # actual log lines land in *our* stderr, not stdout. Capturing them
+    # separately (the original approach here) silently produced an empty
+    # `lines` list on every one of those apps, with no error to explain why
+    # - found via a real deployment where /logs simply never showed
+    # anything for iSponsorBlockTV specifically.
     try:
-        out = subprocess.run(cmd, capture_output=True, text=True, timeout=10, check=False)
+        out = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            timeout=10,
+            check=False,
+        )
     except (OSError, subprocess.TimeoutExpired) as e:
         return LogsResult(method, error=f"log tail failed: {e}")
     if out.returncode != 0:
-        err = out.stderr.strip() or out.stdout.strip() or f"exit {out.returncode}"
+        err = out.stdout.strip() or f"exit {out.returncode}"
         return LogsResult(method, error=err)
     return LogsResult(method, lines=out.stdout.splitlines())
