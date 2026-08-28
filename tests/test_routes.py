@@ -223,6 +223,29 @@ def test_screen_id_hidden_in_form(app_with_tmp_config) -> None:
     assert "+ Pair a new device" not in body
 
 
+def test_device_row_remove_button_enables_save(app_with_tmp_config) -> None:
+    """Bug found on a real deployment (issue #46): Remove does
+    this.closest('tr').remove(), a plain DOM removal that fires neither
+    input nor change - the two events config.js's dirty-tracker listens
+    for to enable Save and restart. A removed device left the button
+    disabled, so the removal was never actually saved: the page looked
+    like there was nothing to save, and config.json still had the device
+    next time the service ran. The onclick must also dispatch a change
+    event on the form so the existing dirty-tracker picks it up - can't
+    execute the JS here (no browser), so this pins the exact onclick
+    string that must ship."""
+    app, tmp = app_with_tmp_config
+    (tmp / "config.json").write_text(
+        json.dumps({"devices": [{"screen_id": "scr-x", "name": "TV", "offset": 0}]})
+    )
+    client = TestClient(app)
+    r = client.get("/")
+    assert r.status_code == 200
+    body = r.text
+    assert "this.closest('tr').remove()" in body
+    assert "this.closest('form').dispatchEvent(new Event('change'))" in body
+
+
 def test_config_page_uses_two_column_grid(app_with_tmp_config) -> None:
     """Round 2 had three articles (SponsorBlock left, Ads top + Playback bottom).
     Round 4 collapsed Ads + Playback into a single 'Other settings' article, so
