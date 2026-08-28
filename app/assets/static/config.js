@@ -52,6 +52,11 @@
     form.addEventListener('input',  enableForDirty, { once: true });
     form.addEventListener('change', enableForDirty, { once: true });
   }
+  // Any control that changes the form's effective submitted data *without*
+  // a real input/change event - device_row.html's Remove button does
+  // Element.remove() on its own <tr>, which fires neither - must dispatch
+  // one of these itself afterward. Found in production: a removed device
+  // left the button disabled, so the removal never actually got saved.
   armDirtyTracker();
 
   function renderToast(cls, msg) {
