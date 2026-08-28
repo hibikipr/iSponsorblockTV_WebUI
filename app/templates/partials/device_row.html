@@ -10,7 +10,7 @@
         <option value="{{ v }}" {% if (d.offset | default(0, true) | int) == v %}selected{% endif %}>{{ v }} ms</option>
         {% endfor %}
       </select>
-      <button type="button" class="secondary" onclick="this.closest('tr').remove()">Remove</button>
+      <button type="button" class="secondary" onclick="this.closest('tr').remove(); this.closest('form').dispatchEvent(new Event('change'))">Remove</button>
     </div>
   </td>
 </tr>
