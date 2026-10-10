@@ -802,3 +802,33 @@ def test_lan_scan_poll_renders_error_state(app_with_tmp_config) -> None:
     assert r.status_code == 200
     assert "Scan failed: boom" in r.text
     assert 'hx-get="/pair/lan-scan/poll"' not in r.text
+
+
+def test_pair_save_offers_restart_and_escapes_name(app_with_tmp_config) -> None:
+    app, _ = app_with_tmp_config
+    client = TestClient(app)
+    r = client.post(
+        "/pair/save",
+        data={"screen_id": "xyz", "name": "TV", "display_name": "<img src=x onerror=alert(1)>", "offset": "0"},
+    )
+    assert r.status_code == 200
+    assert '<img src=x onerror=alert(1)>' not in r.text
+    assert '&lt;img src=x onerror=alert(1)&gt;' in r.text
+    assert 'hx-post="/restart"' in r.text
+    assert 'hx-target="closest article" hx-swap="outerHTML"' in r.text
+
+
+def test_restart_endpoint_works_without_config_save(
+    app_with_tmp_config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    app, _ = app_with_tmp_config
+    from app.services import restart as restart_service
+
+    monkeypatch.setattr(
+        restart_service,
+        "restart",
+        lambda: restart_service.RestartResult(True, "docker", "restarted"),
+    )
+    r = TestClient(app).post("/restart")
+    assert r.status_code == 200
+    assert "restarted" in r.text

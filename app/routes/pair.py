@@ -1,7 +1,7 @@
-"""Device pairing routes: GET /pair, POST /pair/code, POST /pair/save,
-POST /pair/lan-scan, GET /pair/lan-scan/poll."""
-
+"""Device pairing routes: TV code, LAN scan, and device save."""
 from __future__ import annotations
+
+from html import escape
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse
@@ -23,8 +23,7 @@ def _pair_context(request: Request, **extra) -> dict:
 
 @router.get("", response_class=HTMLResponse)
 async def index(request: Request) -> HTMLResponse:
-    # Full render of the current devices list — anything in it counts as
-    # "delivered" so the next poll only appends what's actually new.
+    # A full render includes all current results; only append later arrivals.
     lan_discovery.mark_all_delivered()
     return request.app.state.templates.TemplateResponse(
         request, "pair.html", _pair_context(request)
@@ -36,7 +35,7 @@ async def pair_code(request: Request, code: str = Form(...)) -> HTMLResponse:
     try:
         device = await pairing_service.pair_with_code(code)
     except pairing_service.PairingError as e:
-        return HTMLResponse(f'<article class="toast err">{e}</article>')
+        return HTMLResponse(f'<article class="toast err">{escape(str(e))}</article>')
     if device is None:
         return HTMLResponse('<article class="toast err">Pairing returned no device.</article>')
     return request.app.state.templates.TemplateResponse(
@@ -57,21 +56,23 @@ async def pair_save(
         return HTMLResponse(
             '<article class="toast err">A device with this screen ID is already in config.</article>'
         )
-    devices.append({"screen_id": screen_id, "name": display_name or name, "offset": offset})
+    selected_name = display_name or name
+    devices.append({"screen_id": screen_id, "name": selected_name, "offset": offset})
     cfg["devices"] = devices
     config_io.save(cfg)
     return HTMLResponse(
         '<article class="toast ok">'
-        f"Device <strong>{display_name or name}</strong> added to config. "
-        'Restart the service from the <a href="/">config page</a> to apply.'
+        f"Device <strong>{escape(selected_name)}</strong> added to config. "
+        "Restart to apply it: "
+        '<form hx-post="/restart" hx-target="closest article" hx-swap="outerHTML" style="display:inline;">'
+        '<button type="submit" class="secondary">Restart service</button>'
+        "</form>"
         "</article>"
     )
 
 
 @router.post("/lan-scan", response_class=HTMLResponse)
 async def lan_scan_start(request: Request) -> HTMLResponse:
-    # start_scan() resets devices to [] and rendered_count to 0, so this is
-    # a full (empty) render — nothing to mark delivered yet.
     await lan_discovery.start_scan()
     return request.app.state.templates.TemplateResponse(
         request, "partials/lan_scan_results.html", _pair_context(request)
@@ -80,11 +81,7 @@ async def lan_scan_start(request: Request) -> HTMLResponse:
 
 @router.get("/lan-scan/poll", response_class=HTMLResponse)
 async def lan_scan_poll(request: Request) -> HTMLResponse:
-    # Only the status strip gets re-rendered; newly discovered devices are
-    # appended via OOB swap so an in-progress edit on an already-rendered
-    # device row is never touched by this endpoint (issue #3 follow-up —
-    # two earlier attempts at guarding the old full-div poll swap with JS
-    # didn't hold up under real-hardware testing).
+    # Append only new results; don't overwrite an in-progress display-name edit.
     new_devices = lan_discovery.take_new_devices()
     return request.app.state.templates.TemplateResponse(
         request,

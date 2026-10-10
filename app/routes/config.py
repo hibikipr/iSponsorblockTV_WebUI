@@ -1,4 +1,5 @@
-"""Config form: GET /, GET /devices/blank-row, POST /save."""
+"""Config form: GET /, GET /devices/blank-row, POST /save, POST /restart."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -7,7 +8,8 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
 from app import settings
-from app.services import config_io, restart as restart_service, service_status
+from app.services import config_io, service_status
+from app.services import restart as restart_service
 
 router = APIRouter()
 
@@ -47,6 +49,22 @@ async def save(request: Request) -> HTMLResponse:
         return _toast(request, ok=False, message=f"Save failed: {e}")
     result = restart_service.restart()
     return _toast(request, ok=result.ok, message=f"Saved. {result.message()}")
+
+
+@router.post("/restart", response_class=HTMLResponse)
+async def restart_only(request: Request) -> HTMLResponse:
+    """Restart without touching config.json.
+
+    For flows that change config.json without going through this page's own
+    form (e.g. /pair/save adding a device) - the config page's Save button
+    is dirty-gated (disabled until *this* form is edited), so a config
+    change made elsewhere leaves no client-side way to trigger the restart
+    that's actually needed to apply it. This exists so those flows have
+    something to link/POST to directly instead of routing the user through
+    a button that's disabled for exactly the reason they're there.
+    """
+    result = restart_service.restart()
+    return _toast(request, ok=result.ok, message=result.message())
 
 
 def _form_to_config(form: Any, existing: dict[str, Any]) -> dict[str, Any]:

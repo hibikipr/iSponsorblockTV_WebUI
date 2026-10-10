@@ -1,6 +1,6 @@
 <li id="lan-device-{{ device.screen_id }}"{% if oob %} hx-swap-oob="beforeend:#lan-scan-devices"{% endif %}>
   <article class="toast ok">
-    <strong>{{ device.name }}</strong> <code class="badge">{{ device.screen_id }}</code>
+    <strong>{{ device.name }}</strong>
     <form hx-post="/pair/save" hx-target="#lan-device-result-{{ device.screen_id }}"
           hx-swap="innerHTML" style="margin-top:.5rem;">
       <input type="hidden" name="screen_id" value="{{ device.screen_id }}" />
