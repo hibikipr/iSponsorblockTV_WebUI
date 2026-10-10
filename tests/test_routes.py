@@ -242,8 +242,10 @@ def test_device_row_remove_button_enables_save(app_with_tmp_config) -> None:
     r = client.get("/")
     assert r.status_code == 200
     body = r.text
-    assert "this.closest('tr').remove()" in body
-    assert "this.closest('form').dispatchEvent(new Event('change'))" in body
+    # Capture the form before removing the row; closest('form') on a
+    # detached button returns null and the dirty event never fires.
+    assert "const form = this.closest('form'); this.closest('tr').remove()" in body
+    assert "form.dispatchEvent(new Event('change'))" in body
 
 
 def test_config_page_uses_two_column_grid(app_with_tmp_config) -> None:
