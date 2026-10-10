@@ -645,6 +645,7 @@ def test_pair_save_offers_a_working_restart_button(app_with_tmp_config) -> None:
     )
     assert r.status_code == 200
     assert 'hx-post="/restart"' in r.text
+    assert 'hx-target="closest article" hx-swap="outerHTML"' in r.text
     assert '<a href="/">config page</a>' not in r.text
 
 

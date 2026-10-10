@@ -54,7 +54,7 @@ async def pair_save(
         '<article class="toast ok">'
         f"Device <strong>{display_name or name}</strong> added to config. "
         "Restart to apply it: "
-        '<form hx-post="/restart" hx-swap="none" style="display:inline;">'
+        '<form hx-post="/restart" hx-target="closest article" hx-swap="outerHTML" style="display:inline;">'
         '<button type="submit" class="secondary">Restart service</button>'
         "</form>"
         "</article>"
