@@ -115,6 +115,38 @@ def test_tail_logs_docker(monkeypatch: pytest.MonkeyPatch) -> None:
     assert r.lines == ["line one", "line two"]
 
 
+def test_tail_logs_docker_reads_stderr_too(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Real-deployment regression: iSponsorBlockTV (like plenty of other
+    containerized apps) logs via Python's `logging` module, which defaults
+    to a StreamHandler on stderr. `docker logs` faithfully reports that on
+    its own stderr - capturing stdout/stderr separately meant `docker ps`
+    succeeding but the container's actual log content landing on the
+    stream we never looked at for the success path. /logs showed "No log
+    lines returned" for a container that was logging just fine."""
+    monkeypatch.setattr(os.path, "exists", lambda p: p == ss.DOCKER_SOCK)
+    monkeypatch.setattr(shutil, "which", lambda b: f"/usr/bin/{b}")
+
+    def fake_run(cmd, **kw):
+        if cmd[1] == "ps":
+            return _completed(stdout="iSponsorBlockTV\n")
+        if cmd[1] == "logs":
+            assert kw.get("stderr") == subprocess.STDOUT, (
+                "stderr must be merged into stdout, not captured separately, "
+                "or stderr-only log output goes missing"
+            )
+            # stdout intentionally empty - all the "real" output is on the
+            # merged stream, which subprocess.run puts on .stdout when
+            # stderr=STDOUT.
+            return _completed(stdout="stderr-logged line one\nstderr-logged line two\n")
+        return _completed(returncode=1)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    r = ss.tail_logs(50)
+    assert r.method == "docker"
+    assert r.error is None
+    assert r.lines == ["stderr-logged line one", "stderr-logged line two"]
+
+
 def test_tail_logs_systemd_user(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(os.path, "exists", lambda p: False)
     monkeypatch.setattr(shutil, "which", lambda b: f"/usr/bin/{b}" if b in ("systemctl", "journalctl") else None)
